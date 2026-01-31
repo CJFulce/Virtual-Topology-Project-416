@@ -1,0 +1,14 @@
+device A 127.0.0.1 5001
+device B 127.0.0.1 5002
+device C 127.0.0.1 5003
+device D 127.0.0.1 5004
+device S1 127.0.0.1 6001
+device S2 127.0.0.1 6002
+device S3 127.0.0.1 6003
+
+link A S1
+link B S1
+link S1 S2
+link S2 S3
+link C S3
+link D S3
