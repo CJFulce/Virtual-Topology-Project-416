@@ -29,6 +29,7 @@ public class Parser {
         }
         return configByLines;
     }
+
     private int getDevicePort(String deviceId){
     
         try (Scanner configScanner = new Scanner(this.configFile)) {
@@ -51,6 +52,28 @@ public class Parser {
         return 0;
      
     }
+    private String getDeviceIP(String deviceId){
+    
+        try (Scanner configScanner = new Scanner(this.configFile)) {
+            while (configScanner.hasNextLine()) {
+                String rawConfig = configScanner.nextLine();
+                if(rawConfig.contains(deviceId)){
+                    String[] lineElements = rawConfig.split(" ");
+                        String parsedIPAddress = lineElements[2];
+                        System.out.println("Got IP");
+                        return parsedIPAddress;
+                }else{
+                    System.out.println("Nothing here for IP");
+                }
+            
+            }
+        } catch (FileNotFoundException error) {
+            System.err.println(error);
+            error.printStackTrace();
+        }
+        return "0.0.0.0";
+     
+    }
 public static void main(String[] args){
 
     Parser testParser = new Parser();
@@ -65,6 +88,14 @@ public static void main(String[] args){
         System.out.println("Error loading port number");
     }else{
         System.out.printf("Port Number: %d\n", portNumber);
+    }
+
+    String ipAddress = testParser.getDeviceIP("S2");
+    
+    if(ipAddress == "0.0.0.0\n"){
+        System.out.println("Error loading IP Address");
+    }else{
+        System.out.printf("IP Address: %s", ipAddress);
     }
     }
 
