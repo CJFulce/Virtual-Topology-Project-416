@@ -1,132 +1,138 @@
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
-import java.nio.charset.StandardCharsets;
-import java.util.LinkedList;
+
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Scanner;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.List;
+import java.util.ArrayList;
 
-public class Host {
 
-    //Two threads needed, one dedicated to waiting to receive any incoming packets --
-    //and the other dedicated to sending out packets
+public class Parser {
+    File configFile;
+    private Map<String, Integer> storedValues;
 
-    public static void main(String[] args) throws Exception {
-
-        //Create Parser instance
-        Parser parser = new Parser();
-
-        //Get info
-        String myMac = args[0];
-        String neighbor = parser.getNeighborAddr(myMac);
-
-        //Open socket
-        DatagramSocket socket = new DatagramSocket(parser.getDevicePort(myMac));
-
-        //Make two threads
-        ExecutorService es = Executors.newFixedThreadPool(2);
-
-        //Start receiving thread
-        es.submit(new receiveTask(socket, myMac));
-
-        //Start sending thread loop
-        es.submit(new sendingTask(socket, myMac, neighbor));
-
+    public Parser(){   
+        this.configFile = new File("Virtual-Topology-Project-416/config.txt");
+        this.storedValues = new HashMap<>();
     }
 
-    static class receiveTask implements Runnable {
-
-        private DatagramSocket socket;
-        private String myMac;
-
-        public receiveTask(DatagramSocket socket, String myMac) {
-
-            this.socket = socket;
-            this.myMac = myMac;
-
+    private List<String> initConfig(){
+        List<String> configByLines = new ArrayList<>();
+        try (Scanner configScanner = new Scanner(this.configFile)) {
+            while (configScanner.hasNextLine()) {
+                String rawConfig = configScanner.nextLine();
+                configByLines.add(rawConfig);
+            }
+        } catch (FileNotFoundException error) {
+            System.err.println(error);
+            error.printStackTrace();
         }
+        return configByLines;
+    }
 
-        public void run() {
-
-            //make buffer
-            byte[] buffer = new byte[1024];
-            DatagramPacket frame = new DatagramPacket(buffer, buffer.length);
-
-            while (true) {
-
-
-                socket.receive(frame);
-
-                //parse the frame
-                String message = new String(frame.getData(), frame.getOffset(), frame.getLength(), StandardCharsets.UTF_8);
-                Packet packet = Packet.decode(message);
-
-
-                if (packet.getDstMac().equals(myMac)) {
-
-                    System.out.println("Message From " + packet.getSrcMac() + ": " + packet.getMessage);
-
+    private int getDevicePort(String deviceId){
+    
+        try (Scanner configScanner = new Scanner(this.configFile)) {
+            while (configScanner.hasNextLine()) {
+                String rawConfig = configScanner.nextLine();
+                if(rawConfig.contains(deviceId) && rawConfig.startsWith("device")){
+                    String[] lineElements = rawConfig.split(" ");
+                        int parsedPortNumber = Integer.parseInt(lineElements[3]);
+                        System.out.println("Gotcha");
+                        return parsedPortNumber;
                 }
-
-                else {
-
-                    System.out.println("Frame For Other Host. Destination : " + packet.getDstMac + "Source : " + packet.getSrcMac);
-
+                // else{
+                //     System.out.println("Nothing here for port");
+                // }
+            }
+        } catch (FileNotFoundException error) {
+            System.err.println(error);
+            error.printStackTrace();
+        }
+        return 0;
+    }
+    private String getDeviceIP(String deviceId){
+    
+        try (Scanner configScanner = new Scanner(this.configFile)) {
+            while (configScanner.hasNextLine()) {
+                String rawConfig = configScanner.nextLine();
+                if(rawConfig.contains(deviceId) && rawConfig.startsWith("device")){
+                    String[] lineElements = rawConfig.split(" ");
+                        String parsedIPAddress = lineElements[2];
+                        System.out.println("Got IP");
+                        return parsedIPAddress;
                 }
+                //     else{
+                // //     System.out.println("Nothing here for IP");
+                // }
+            }
+        } catch (FileNotFoundException error) {
+            System.err.println(error);
+            error.printStackTrace();
+        }
+        return "0.0.0.0";
+    }
 
+    private List<String> getNeighborAddr(String deviceId){
+        List<String> neighbors = new ArrayList<>();
+        try (Scanner configScanner = new Scanner(this.configFile)) {
+            while (configScanner.hasNextLine()) {
+                String rawConfig = configScanner.nextLine();
+                if(rawConfig.startsWith("link")){
+                    String[] lineElements = rawConfig.split(" ");
+                    // use equals to compare strings
+                    if(lineElements[1].equals(deviceId)){
+                        // add the neighbor id or ip (adjust index per your file format)
+                        neighbors.add(lineElements[2]);
+                    }if(lineElements[2].equals(deviceId)){
+                        neighbors.add(lineElements[1]);
+                    }
+                }
 
             }
+            return neighbors;
 
+        } catch (FileNotFoundException error) {
+            System.err.println(error);
+            error.printStackTrace();
         }
+        return neighbors; //will return empty if not seen in config file
+    }
+public static void main(String[] args){
 
+    Parser testParser = new Parser();
+
+    List<String> scannedConfig = testParser.initConfig();
+        for (int i = 0; i < scannedConfig.size(); i++) { //test print
+            System.out.println(i + ": " + scannedConfig.get(i));
+        }
+    int portNumber = testParser.getDevicePort("S2");
+
+    if(portNumber == 0){
+        System.out.println("Error loading port number");
+    }else{
+        System.out.printf("Port Number: %d\n", portNumber);
     }
 
-     static class sendingTask implements Runnable {
+    String ipAddress = testParser.getDeviceIP("S2");
+    
+    if(ipAddress == "0.0.0.0\n"){
+        System.out.println("Error loading IP Address");
+    }else{
+        System.out.printf("IP Address: %s\n", ipAddress);
+    }
 
-        private DatagramSocket socket;
-        private String myMac;
-        private String neighbor;
-
-        public sendingTask(DatagramSocket socket, String myMac, String neighbor) {
-
-            this.socket = socket;
-            this.myMac = myMac;
-            this.neighbor = neighbor;
-
+    List<String> neighborList = testParser.getNeighborAddr("S2");
+    
+    if(neighborList.isEmpty()){
+        System.out.println("No neighbors found");
+    }else{
+        for(String neighbor : neighborList){
+            System.out.printf("Neighbor: %s\n", neighbor);
         }
-
-         public void run() {
-
-             //Create Scanner
-             Scanner scanner = new Scanner(System.in);
-
-             while (true) {
-
-                 //Prompt user for destination MAC then message
-                 System.out.println("Enter Destination");
-                 String destMAC = scanner.nextLine();
-
-                 System.out.println("Enter Message To Send");
-                 String message = scanner.nextLine();
-
-                 //Create virtual frame string (Packet Class)
-                 Packet packet = new Packet(myMac, destMAC, message);
-                 byte[] data = packet.encode().getBytes(StandardCharsets.UTF_8);
-
-                 InetAddress switchIP = parser.getDeviceIP(neighbor);
-                 int switchPort = parser.getDevicePort(neighbor);
-
-                 //Send UDP packet to designated switch
-                 DatagramPacket frame = new DatagramPacket(data, data.length, switchIP, switchPort);
-
-                 socket.send(frame);
-                 System.out.println("Frame Sent To Switch");
-
-             }
-
-         }
-
-     }
+        
+    }
+    }
 
 }
