@@ -14,12 +14,15 @@ public class Host {
 
     public static void main(String[] args) throws Exception {
 
+        //Create Parser instance
+        Parser parser = new Parser();
+
         //Get info
-        String myMac = args[1];
-        String neighbor = Parser.getNeighborAddr(myMac);
+        String myMac = args[0];
+        String neighbor = parser.getNeighborAddr(myMac);
 
         //Open socket
-        DatagramSocket socket = new DatagramSocket(Parser.getDevicePort(myMac));
+        DatagramSocket socket = new DatagramSocket(parser.getDevicePort(myMac));
 
         //Make two threads
         ExecutorService es = Executors.newFixedThreadPool(2);
@@ -111,8 +114,8 @@ public class Host {
                  Packet packet = new Packet(myMac, destMAC, message);
                  byte[] data = packet.encode().getBytes(StandardCharsets.UTF_8);
 
-                 InetAddress switchIP = Parser.getDeviceIP(neighbor);
-                 int switchPort = Parser.getDevicePort(neighbor);
+                 InetAddress switchIP = parser.getDeviceIP(neighbor);
+                 int switchPort = parser.getDevicePort(neighbor);
 
                  //Send UDP packet to designated switch
                  DatagramPacket frame = new DatagramPacket(data, data.length, switchIP, switchPort);
