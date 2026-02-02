@@ -1,8 +1,7 @@
-import java.net.DatagramPacket;
-import java.net.DatagramSocket;
-import java.net.InetAddress;
+import java.io.IOException;
+import java.net.*;
 import java.nio.charset.StandardCharsets;
-import java.util.LinkedList;
+import java.util.List;
 import java.util.Scanner;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -14,12 +13,13 @@ public class Host {
 
     public static void main(String[] args) throws Exception {
 
-        //Create Parser instance
+        //Make instance of Parser
         Parser parser = new Parser();
 
         //Get info
         String myMac = args[0];
-        String neighbor = parser.getNeighborAddr(myMac);
+        List<String> neighbors = parser.getNeighborAddr(myMac);
+        String neighbor = neighbors.getFirst();
 
         //Open socket
         DatagramSocket socket = new DatagramSocket(parser.getDevicePort(myMac));
@@ -31,14 +31,14 @@ public class Host {
         es.submit(new receiveTask(socket, myMac));
 
         //Start sending thread loop
-        es.submit(new sendingTask(socket, myMac, neighbor));
+        es.submit(new sendingTask(socket, myMac, neighbor, parser));
 
     }
 
     static class receiveTask implements Runnable {
 
-        private DatagramSocket socket;
-        private String myMac;
+        private final DatagramSocket socket;
+        private final String myMac;
 
         public receiveTask(DatagramSocket socket, String myMac) {
 
@@ -55,23 +55,32 @@ public class Host {
 
             while (true) {
 
+                try {
 
-                socket.receive(frame);
+                    socket.receive(frame);
 
-                //parse the frame
+                }
+
+                catch (IOException e) {
+
+                    throw new RuntimeException(e);
+
+
+                }
+
                 String message = new String(frame.getData(), frame.getOffset(), frame.getLength(), StandardCharsets.UTF_8);
                 Packet packet = Packet.decode(message);
 
 
                 if (packet.getDstMac().equals(myMac)) {
 
-                    System.out.println("Message From " + packet.getSrcMac() + ": " + packet.getMessage);
+                    System.out.println("Message From " + packet.getSrcMac() + ": " + packet.getMessage());
 
                 }
 
                 else {
 
-                    System.out.println("Frame For Other Host. Destination : " + packet.getDstMac + "Source : " + packet.getSrcMac);
+                    System.out.println("Frame For Other Host. Destination : " + packet.getDstMac() + "Source : " + packet.getSrcMac());
 
                 }
 
@@ -84,15 +93,17 @@ public class Host {
 
      static class sendingTask implements Runnable {
 
-        private DatagramSocket socket;
-        private String myMac;
-        private String neighbor;
+        private final DatagramSocket socket;
+        private final String myMac;
+        private final String neighbor;
+        private final Parser parser;
 
-        public sendingTask(DatagramSocket socket, String myMac, String neighbor) {
+        public sendingTask(DatagramSocket socket, String myMac, String neighbor, Parser parser) {
 
             this.socket = socket;
             this.myMac = myMac;
             this.neighbor = neighbor;
+            this.parser = parser;
 
         }
 
@@ -114,13 +125,34 @@ public class Host {
                  Packet packet = new Packet(myMac, destMAC, message);
                  byte[] data = packet.encode().getBytes(StandardCharsets.UTF_8);
 
-                 InetAddress switchIP = parser.getDeviceIP(neighbor);
+                 InetAddress switchIP;
+                 try {
+
+                     switchIP = InetAddress.getByName(parser.getDeviceIP(neighbor));
+
+                 }
+
+                 catch (UnknownHostException e) {
+
+                     throw new RuntimeException(e);
+
+                 }
+
                  int switchPort = parser.getDevicePort(neighbor);
 
                  //Send UDP packet to designated switch
                  DatagramPacket frame = new DatagramPacket(data, data.length, switchIP, switchPort);
 
-                 socket.send(frame);
+                 try {
+
+                     socket.send(frame);
+
+                 } catch (IOException e) {
+
+                     throw new RuntimeException(e);
+
+                 }
+
                  System.out.println("Frame Sent To Switch");
 
              }

@@ -13,7 +13,7 @@ public class Parser {
     private Map<String, Integer> storedValues;
 
     public Parser(){   
-        this.configFile = new File("Virtual-Topology-Project-416/config.txt");
+        this.configFile = new File("config.txt");
         this.storedValues = new HashMap<>();
     }
 
@@ -31,7 +31,7 @@ public class Parser {
         return configByLines;
     }
 
-    private int getDevicePort(String deviceId){
+    int getDevicePort(String deviceId){
     
         try (Scanner configScanner = new Scanner(this.configFile)) {
             while (configScanner.hasNextLine()) {
@@ -52,7 +52,7 @@ public class Parser {
         }
         return 0;
     }
-    private String getDeviceIP(String deviceId){
+      String getDeviceIP(String deviceId){
     
         try (Scanner configScanner = new Scanner(this.configFile)) {
             while (configScanner.hasNextLine()) {
@@ -74,7 +74,7 @@ public class Parser {
         return "0.0.0.0";
     }
 
-    private List<String> getNeighborAddr(String deviceId){
+    List<String> getNeighborAddr(String deviceId){
         List<String> neighbors = new ArrayList<>();
         try (Scanner configScanner = new Scanner(this.configFile)) {
             while (configScanner.hasNextLine()) {
