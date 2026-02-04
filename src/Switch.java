@@ -48,8 +48,7 @@ public class Switch {
         DatagramPacket dp = new DatagramPacket(
                 data, data.length,
                 InetAddress.getByName(out.ip),
-                out.udpPort
-        );
+                out.udpPort);
         sock.send(dp);
     }
 
@@ -90,7 +89,8 @@ public class Switch {
         DatagramSocket sock = new DatagramSocket(myPort);
         System.out.println("[" + myId + "] Switch up on " + myIp + ":" + myPort);
         System.out.println("[" + myId + "] Ports:");
-        for (Port p : sw.ports.values()) System.out.println("  - " + p);
+        for (Port p : sw.ports.values())
+            System.out.println("  - " + p);
 
         byte[] buf = new byte[2048];
         DatagramPacket dp = new DatagramPacket(buf, buf.length);
@@ -131,18 +131,26 @@ public class Switch {
             this.udpPort = udpPort;
         }
 
-        String key() { return ip + ":" + udpPort; }
+        String key() {
+            return ip + ":" + udpPort;
+        }
 
-        @Override public String toString() { return neighborId + "(" + ip + ":" + udpPort + ")"; }
+        @Override
+        public String toString() {
+            return neighborId + "(" + ip + ":" + udpPort + ")";
+        }
 
         @Override
         public boolean equals(Object o) {
-            if (!(o instanceof Port)) return false;
+            if (!(o instanceof Port))
+                return false;
             Port other = (Port) o;
             return udpPort == other.udpPort && Objects.equals(ip, other.ip);
         }
 
         @Override
-        public int hashCode() { return Objects.hash(ip, udpPort); }
+        public int hashCode() {
+            return Objects.hash(ip, udpPort);
+        }
     }
 }

@@ -7,17 +7,51 @@ import java.util.Scanner;
 import java.util.List;
 import java.util.ArrayList;
 
-
 public class Parser {
     File configFile;
     private Map<String, Integer> storedValues;
 
-    public Parser(){   
+    public Parser() {
         this.configFile = new File("config.txt");
         this.storedValues = new HashMap<>();
     }
 
-    private List<String> initConfig(){
+    public static int getPort(String deviceId) {
+        Parser p = new Parser();
+        return p.getDevicePort(deviceId);
+    }
+
+    public static String getIp(String deviceId) {
+        Parser p = new Parser();
+        return p.getDeviceIP(deviceId);
+    }
+
+    public static List<NeighborAddr> getNeighborAddrs(String deviceId) {
+        Parser p = new Parser();
+        List<String> neighborIds = p.getNeighborAddr(deviceId);
+        List<NeighborAddr> result = new ArrayList<>();
+
+        for (String neighborId : neighborIds) {
+            String ip = p.getDeviceIP(neighborId);
+            int port = p.getDevicePort(neighborId);
+            result.add(new NeighborAddr(neighborId, ip, port));
+        }
+        return result;
+    }
+
+    public static class NeighborAddr {
+        public final String id;
+        public final String ip;
+        public final int port;
+
+        public NeighborAddr(String id, String ip, int port) {
+            this.id = id;
+            this.ip = ip;
+            this.port = port;
+        }
+    }
+
+    private List<String> initConfig() {
         List<String> configByLines = new ArrayList<>();
         try (Scanner configScanner = new Scanner(this.configFile)) {
             while (configScanner.hasNextLine()) {
@@ -31,61 +65,63 @@ public class Parser {
         return configByLines;
     }
 
-    int getDevicePort(String deviceId){
-    
+    int getDevicePort(String deviceId) {
+
         try (Scanner configScanner = new Scanner(this.configFile)) {
             while (configScanner.hasNextLine()) {
                 String rawConfig = configScanner.nextLine();
-                if(rawConfig.contains(deviceId) && rawConfig.startsWith("device")){
+                if (rawConfig.contains(deviceId) && rawConfig.startsWith("device")) {
                     String[] lineElements = rawConfig.split(" ");
-                        int parsedPortNumber = Integer.parseInt(lineElements[3]);
-                        System.out.println("Gotcha");
-                        return parsedPortNumber;
+                    int parsedPortNumber = Integer.parseInt(lineElements[3]);
+                    System.out.println("Gotcha");
+                    return parsedPortNumber;
                 }
                 // else{
-                //     System.out.println("Nothing here for port");
+                // System.out.println("Nothing here for port");
                 // }
             }
         } catch (FileNotFoundException error) {
             System.err.println(error);
             error.printStackTrace();
         }
-        return 0;
+        return -1;
     }
-      String getDeviceIP(String deviceId){
-    
+
+    String getDeviceIP(String deviceId) {
+
         try (Scanner configScanner = new Scanner(this.configFile)) {
             while (configScanner.hasNextLine()) {
                 String rawConfig = configScanner.nextLine();
-                if(rawConfig.contains(deviceId) && rawConfig.startsWith("device")){
+                if (rawConfig.contains(deviceId) && rawConfig.startsWith("device")) {
                     String[] lineElements = rawConfig.split(" ");
-                        String parsedIPAddress = lineElements[2];
-                        System.out.println("Got IP");
-                        return parsedIPAddress;
+                    String parsedIPAddress = lineElements[2];
+                    System.out.println("Got IP");
+                    return parsedIPAddress;
                 }
-                //     else{
-                // //     System.out.println("Nothing here for IP");
+                // else{
+                // // System.out.println("Nothing here for IP");
                 // }
             }
         } catch (FileNotFoundException error) {
             System.err.println(error);
             error.printStackTrace();
         }
-        return "0.0.0.0";
+        return null;
     }
 
-    List<String> getNeighborAddr(String deviceId){
+    List<String> getNeighborAddr(String deviceId) {
         List<String> neighbors = new ArrayList<>();
         try (Scanner configScanner = new Scanner(this.configFile)) {
             while (configScanner.hasNextLine()) {
                 String rawConfig = configScanner.nextLine();
-                if(rawConfig.startsWith("link")){
+                if (rawConfig.startsWith("link")) {
                     String[] lineElements = rawConfig.split(" ");
                     // use equals to compare strings
-                    if(lineElements[1].equals(deviceId)){
+                    if (lineElements[1].equals(deviceId)) {
                         // add the neighbor id or ip (adjust index per your file format)
                         neighbors.add(lineElements[2]);
-                    }if(lineElements[2].equals(deviceId)){
+                    }
+                    if (lineElements[2].equals(deviceId)) {
                         neighbors.add(lineElements[1]);
                     }
                 }
@@ -97,42 +133,43 @@ public class Parser {
             System.err.println(error);
             error.printStackTrace();
         }
-        return neighbors; //will return empty if not seen in config file
+        return neighbors; // will return empty if not seen in config file
     }
-public static void main(String[] args){
 
-    Parser testParser = new Parser();
+    public static void main(String[] args) {
 
-    List<String> scannedConfig = testParser.initConfig();
-        for (int i = 0; i < scannedConfig.size(); i++) { //test print
+        Parser testParser = new Parser();
+
+        List<String> scannedConfig = testParser.initConfig();
+        for (int i = 0; i < scannedConfig.size(); i++) { // test print
             System.out.println(i + ": " + scannedConfig.get(i));
         }
-    int portNumber = testParser.getDevicePort("S2");
+        int portNumber = testParser.getDevicePort("S2");
 
-    if(portNumber == 0){
-        System.out.println("Error loading port number");
-    }else{
-        System.out.printf("Port Number: %d\n", portNumber);
-    }
-
-    String ipAddress = testParser.getDeviceIP("S2");
-    
-    if(ipAddress == "0.0.0.0\n"){
-        System.out.println("Error loading IP Address");
-    }else{
-        System.out.printf("IP Address: %s\n", ipAddress);
-    }
-
-    List<String> neighborList = testParser.getNeighborAddr("S2");
-    
-    if(neighborList.isEmpty()){
-        System.out.println("No neighbors found");
-    }else{
-        for(String neighbor : neighborList){
-            System.out.printf("Neighbor: %s\n", neighbor);
+        if (portNumber == 0) {
+            System.out.println("Error loading port number");
+        } else {
+            System.out.printf("Port Number: %d\n", portNumber);
         }
-        
-    }
+
+        String ipAddress = testParser.getDeviceIP("S2");
+
+        if (ipAddress == "0.0.0.0\n") {
+            System.out.println("Error loading IP Address");
+        } else {
+            System.out.printf("IP Address: %s\n", ipAddress);
+        }
+
+        List<String> neighborList = testParser.getNeighborAddr("S2");
+
+        if (neighborList.isEmpty()) {
+            System.out.println("No neighbors found");
+        } else {
+            for (String neighbor : neighborList) {
+                System.out.printf("Neighbor: %s\n", neighbor);
+            }
+
+        }
     }
 
 }
