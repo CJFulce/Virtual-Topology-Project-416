@@ -120,37 +120,4 @@ public class Switch {
         }
     }
 
-    private static class Port {
-        final String neighborId;
-        final String ip;
-        final int udpPort;
-
-        Port(String neighborId, String ip, int udpPort) {
-            this.neighborId = neighborId;
-            this.ip = ip;
-            this.udpPort = udpPort;
-        }
-
-        String key() {
-            return ip + ":" + udpPort;
-        }
-
-        @Override
-        public String toString() {
-            return neighborId + "(" + ip + ":" + udpPort + ")";
-        }
-
-        @Override
-        public boolean equals(Object o) {
-            if (!(o instanceof Port))
-                return false;
-            Port other = (Port) o;
-            return udpPort == other.udpPort && Objects.equals(ip, other.ip);
-        }
-
-        @Override
-        public int hashCode() {
-            return Objects.hash(ip, udpPort);
-        }
-    }
 }
