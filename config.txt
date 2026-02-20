@@ -1,28 +1,30 @@
-device A net1.A R1G0/0 10.222.109.99 5001
-device B net1.B R1G0/0 10.222.8.250 5002
-device C net3.C R2G0/1 10.222.107.48 5003
-device D net3.D R2G0/1 10.222.64.237 5004
-device S1 10.222.8.250 6001
-device S2 10.222.109.99 6002
-device R1G0/0 net1.R1 7000
-device R1G0/1 net2.R1 7001
-device R2G0/0 net2.R2 7010 
-device R2G0/1 net3.R2 7011
+device A net1.A 10.222.109.99 5001 R1L
+device B net1.B 10.222.8.250 5002 R1L
+device C net3.C 10.222.107.48 5003 R2R
+device D net3.D 10.222.64.237 5004 R2R
+device S1 net1.S1 10.222.8.250 6001
+device S2 net3.S3 10.222.109.99 6002
+device R1L net1.R1 7000
+device R1R net2.R1 7001
+device R2L net2.R2 7010
+device R2R net3.R2 7011
 
 link A S1
 link B S1
-link S1 S2
-link S2 S3
-link C S3
-link D S3
+link S1 R1L
+link R1R R2L
+link R2R S2
+link C S2
+link D S2
 
 routing R1 
-net1 G0/0
-net2 G0/1
-net3 R2 G0/0
+net1 R1L
+net2 R1R
+net3 R2
 
 routing R2
-net1 R1 G0/1
-net2 G0/0
-net3 G0/1 
+net1 R1
+net2 R2L
+net3 R2R
+
 
