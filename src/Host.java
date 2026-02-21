@@ -8,7 +8,7 @@ import java.util.concurrent.Executors;
 
 public class Host {
 
-    //Two threads needed, one dedicated to waiting to receive any incoming packets --
+    //Two threads needed, one dedicated to waiting to receive any incoming packets
     //and the other dedicated to sending out packets
 
     public static void main(String[] args) throws Exception {
@@ -18,6 +18,7 @@ public class Host {
 
         //Get info
         String myMac = args[0];
+        String myIP = parser.getVirtualIPAddr(myMac);
         List<String> neighbors = parser.getNeighborAddr(myMac);
         String neighbor = neighbors.getFirst();
 
@@ -31,7 +32,7 @@ public class Host {
         es.submit(new receiveTask(socket, myMac));
 
         //Start sending thread loop
-        es.submit(new sendingTask(socket, myMac, neighbor, parser));
+        es.submit(new sendingTask(socket, myMac, myIP, neighbor, parser));
 
     }
 
@@ -95,13 +96,15 @@ public class Host {
 
         private final DatagramSocket socket;
         private final String myMac;
+        private final String myIP;
         private final String neighbor;
         private final Parser parser;
 
-        public sendingTask(DatagramSocket socket, String myMac, String neighbor, Parser parser) {
+        public sendingTask(DatagramSocket socket, String myMac, String myIP, String neighbor, Parser parser) {
 
             this.socket = socket;
             this.myMac = myMac;
+            this.myIP = myIP;
             this.neighbor = neighbor;
             this.parser = parser;
 
@@ -114,15 +117,18 @@ public class Host {
 
              while (true) {
 
-                 //Prompt user for destination MAC then message
-                 System.out.println("Enter Destination");
+                 //Prompt user for destination MAC, destination IP, & message
+                 System.out.println("Enter Destination MAC");
                  String destMAC = scanner.nextLine();
+
+                 System.out.println("Enter Destination IP");
+                 String destIP = scanner.nextLine();
 
                  System.out.println("Enter Message To Send");
                  String message = scanner.nextLine();
 
                  //Create virtual frame string (Packet Class)
-                 Packet packet = new Packet(myMac, destMAC, message);
+                 Packet packet = new Packet(myMac, destMAC, myIP, destIP, message);
                  byte[] data = packet.encode().getBytes(StandardCharsets.UTF_8);
 
                  InetAddress switchIP;
