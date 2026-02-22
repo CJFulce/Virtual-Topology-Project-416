@@ -8,30 +8,30 @@ import java.util.concurrent.Executors;
 
 public class Host {
 
-    //Two threads needed, one dedicated to waiting to receive any incoming packets
-    //and the other dedicated to sending out packets
+    // Two threads needed, one dedicated to waiting to receive any incoming packets
+    // and the other dedicated to sending out packets
 
     public static void main(String[] args) throws Exception {
 
-        //Make instance of Parser
+        // Make instance of Parser
         Parser parser = new Parser();
 
-        //Get info
+        // Get info
         String myMac = args[0];
         String myIP = parser.getVirtualIPAddr(myMac);
         List<String> neighbors = parser.getNeighborAddr(myMac);
         String neighbor = neighbors.getFirst();
 
-        //Open socket
+        // Open socket
         DatagramSocket socket = new DatagramSocket(parser.getDevicePort(myMac));
 
-        //Make two threads
+        // Make two threads
         ExecutorService es = Executors.newFixedThreadPool(2);
 
-        //Start receiving thread
+        // Start receiving thread
         es.submit(new receiveTask(socket, myMac));
 
-        //Start sending thread loop
+        // Start sending thread loop
         es.submit(new sendingTask(socket, myMac, myIP, neighbor, parser));
 
     }
@@ -50,7 +50,7 @@ public class Host {
 
         public void run() {
 
-            //make buffer
+            // make buffer
             byte[] buffer = new byte[1024];
             DatagramPacket frame = new DatagramPacket(buffer, buffer.length);
 
@@ -66,25 +66,24 @@ public class Host {
 
                     throw new RuntimeException(e);
 
-
                 }
 
-                String message = new String(frame.getData(), frame.getOffset(), frame.getLength(), StandardCharsets.UTF_8);
+                String message = new String(frame.getData(), frame.getOffset(), frame.getLength(),
+                        StandardCharsets.UTF_8);
                 Packet packet = Packet.decode(message);
 
-
                 if (packet.getDstMac().equals(myMac)) {
-
-                    System.out.println("Message From " + packet.getSrcMac() + ": " + packet.getMessage());
-
+                    String srcIP = packet.getSrcIP();
+                    String srcHost = srcIP.substring(srcIP.indexOf('.') + 1);
+                    System.out.println("Message From " + srcHost + ": " + packet.getMessage());
                 }
 
                 else {
 
-                    System.out.println("Frame For Other Host. Destination : " + packet.getDstMac() + "Source : " + packet.getSrcMac());
+                    System.out.println("Frame For Other Host. Destination : " + packet.getDstMac() + "Source : "
+                            + packet.getSrcMac());
 
                 }
-
 
             }
 
@@ -92,7 +91,7 @@ public class Host {
 
     }
 
-     static class sendingTask implements Runnable {
+    static class sendingTask implements Runnable {
 
         private final DatagramSocket socket;
         private final String myMac;
@@ -110,61 +109,70 @@ public class Host {
 
         }
 
-         public void run() {
+        public void run() {
 
-             //Create Scanner
-             Scanner scanner = new Scanner(System.in);
+            // Create Scanner
+            Scanner scanner = new Scanner(System.in);
 
-             while (true) {
+            while (true) {
 
-                 //Prompt user for destination MAC, destination IP, & message
-                 System.out.println("Enter Destination MAC");
-                 String destMAC = scanner.nextLine();
+                System.out.println("Enter Destination Virtual IP (e.g., net3.D)");
+                String destIP = scanner.nextLine();
 
-                 System.out.println("Enter Destination IP");
-                 String destIP = scanner.nextLine();
+                System.out.println("Enter Message To Send");
+                String message = scanner.nextLine();
 
-                 System.out.println("Enter Message To Send");
-                 String message = scanner.nextLine();
+                String destSubnet = destIP.substring(0, destIP.indexOf('.'));
+                String srcSubnet = myIP.substring(0, myIP.indexOf('.'));
 
-                 //Create virtual frame string (Packet Class)
-                 Packet packet = new Packet(myMac, destMAC, myIP, destIP, message);
-                 byte[] data = packet.encode().getBytes(StandardCharsets.UTF_8);
+                String destMAC;
+                if (destSubnet.equals(srcSubnet)) {
+                    destMAC = destIP.substring(destIP.indexOf('.') + 1);
+                } else {
+                    String gatewayVirtualIP = parser.getGatewayVirtualIP(myMac);
+                    if (gatewayVirtualIP == null) {
+                        System.out.println("Error: Could not find gateway virtual IP");
+                        continue;
+                    }
+                    destMAC = gatewayVirtualIP.substring(gatewayVirtualIP.indexOf('.') + 1);
+                }
 
-                 InetAddress switchIP;
-                 try {
+                Packet packet = new Packet(myMac, destMAC, myIP, destIP, message);
+                byte[] data = packet.encode().getBytes(StandardCharsets.UTF_8);
 
-                     switchIP = InetAddress.getByName(parser.getDeviceIP(neighbor));
+                InetAddress switchIP;
+                try {
 
-                 }
+                    switchIP = InetAddress.getByName(parser.getDeviceIP(neighbor));
 
-                 catch (UnknownHostException e) {
+                }
 
-                     throw new RuntimeException(e);
+                catch (UnknownHostException e) {
 
-                 }
+                    throw new RuntimeException(e);
 
-                 int switchPort = parser.getDevicePort(neighbor);
+                }
 
-                 //Send UDP packet to designated switch
-                 DatagramPacket frame = new DatagramPacket(data, data.length, switchIP, switchPort);
+                int switchPort = parser.getDevicePort(neighbor);
 
-                 try {
+                DatagramPacket frame = new DatagramPacket(data, data.length, switchIP, switchPort);
 
-                     socket.send(frame);
+                try {
 
-                 } catch (IOException e) {
+                    socket.send(frame);
 
-                     throw new RuntimeException(e);
+                } catch (IOException e) {
 
-                 }
+                    throw new RuntimeException(e);
 
-                 System.out.println("Frame Sent To Switch");
+                }
 
-             }
+                System.out.println("Frame Sent To Switch");
 
-         }
+            }
 
-     }
+        }
+
+    }
 
 }

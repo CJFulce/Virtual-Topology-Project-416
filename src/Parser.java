@@ -70,11 +70,13 @@ public class Parser {
         try (Scanner configScanner = new Scanner(this.configFile)) {
             while (configScanner.hasNextLine()) {
                 String rawConfig = configScanner.nextLine();
-                if (rawConfig.contains(deviceId) && rawConfig.startsWith("device")) {
+                if (rawConfig.startsWith("device")) {
                     String[] lineElements = rawConfig.split(" ");
-                    String virtualIP = lineElements[2];
-                    System.out.printf("Virtual IP Found: %s\n", virtualIP);
-                    return virtualIP;
+                    if (lineElements.length >= 3 && lineElements[1].equals(deviceId)) {
+                        String virtualIP = lineElements[2];
+                        System.out.printf("Virtual IP Found: %s\n", virtualIP);
+                        return virtualIP;
+                    }
                 }
             }
         } catch (FileNotFoundException error) {
@@ -83,16 +85,24 @@ public class Parser {
         }
         return null;
     }
-    int getDevicePort(String deviceId) {
 
+    int getDevicePort(String deviceId) {
         try (Scanner configScanner = new Scanner(this.configFile)) {
             while (configScanner.hasNextLine()) {
                 String rawConfig = configScanner.nextLine();
-                if (rawConfig.contains(deviceId) && rawConfig.startsWith("device")) {
+                if (rawConfig.startsWith("device")) {
                     String[] lineElements = rawConfig.split(" ");
-                    int parsedPortNumber = Integer.parseInt(lineElements[4]);
-                    System.out.printf("Port Number Found: %s\n", parsedPortNumber);
-                    return parsedPortNumber;
+                    if (lineElements.length >= 2 && lineElements[1].equals(deviceId)) {
+                        if (lineElements.length == 5 && lineElements[1].startsWith("R")) {
+                            int parsedPortNumber = Integer.parseInt(lineElements[4]);
+                            System.out.printf("Port Number Found: %s\n", parsedPortNumber);
+                            return parsedPortNumber;
+                        } else if (lineElements.length >= 5) {
+                            int parsedPortNumber = Integer.parseInt(lineElements[4]);
+                            System.out.printf("Port Number Found: %s\n", parsedPortNumber);
+                            return parsedPortNumber;
+                        }
+                    }
                 }
             }
         } catch (FileNotFoundException error) {
@@ -103,15 +113,24 @@ public class Parser {
     }
 
     String getDeviceIP(String deviceId) {
-
         try (Scanner configScanner = new Scanner(this.configFile)) {
             while (configScanner.hasNextLine()) {
                 String rawConfig = configScanner.nextLine();
-                if (rawConfig.contains(deviceId) && rawConfig.startsWith("device")) {
+                if (rawConfig.startsWith("device")) {
                     String[] lineElements = rawConfig.split(" ");
-                    String parsedIPAddress = lineElements[3];
-                    System.out.printf("IP Addr Found: %s\n", parsedIPAddress);
-                    return parsedIPAddress;
+                    if (lineElements.length >= 2 && lineElements[1].equals(deviceId)) {
+                        if (lineElements.length == 5 && lineElements[1].startsWith("R")) {
+                            // Router port format: device R1L net1.R1 127.0.0.1 7000 (IP at index 3)
+                            String parsedIPAddress = lineElements[3];
+                            System.out.printf("IP Addr Found: %s\n", parsedIPAddress);
+                            return parsedIPAddress;
+                        } else if (lineElements.length >= 5) {
+                            // Host or switch format: device A net1.A 127.0.0.1 5001 ... (IP at index 3)
+                            String parsedIPAddress = lineElements[3];
+                            System.out.printf("IP Addr Found: %s\n", parsedIPAddress);
+                            return parsedIPAddress;
+                        }
+                    }
                 }
             }
         } catch (FileNotFoundException error) {
@@ -147,16 +166,21 @@ public class Parser {
         }
         return neighbors; // will return empty if not seen in config file
     }
+
     String getDefaultGateway(String deviceId) {
 
         try (Scanner configScanner = new Scanner(this.configFile)) {
             while (configScanner.hasNextLine()) {
                 String rawConfig = configScanner.nextLine();
-                if (rawConfig.contains(deviceId) && rawConfig.startsWith("device")) {
+                if (rawConfig.startsWith("device")) {
                     String[] lineElements = rawConfig.split(" ");
-                    String gateway = lineElements[5];
-                    System.out.printf("Gateway found: %s\n", gateway);
-                    return gateway;
+                    if (lineElements.length >= 2 && lineElements[1].equals(deviceId)) {
+                        if (lineElements.length >= 6) {
+                            String gateway = lineElements[5];
+                            System.out.printf("Gateway found: %s\n", gateway);
+                            return gateway;
+                        }
+                    }
                 }
             }
         } catch (FileNotFoundException error) {
@@ -165,13 +189,22 @@ public class Parser {
         }
         return null;
     }
+
+    String getGatewayVirtualIP(String deviceId) {
+        String gatewayDeviceId = getDefaultGateway(deviceId);
+        if (gatewayDeviceId != null) {
+            return getVirtualIPAddr(gatewayDeviceId);
+        }
+        return null;
+    }
+
     List<String> getRoutingTables(String deviceId) {
         List<String> routingTable = new ArrayList<>();
         try (Scanner configScanner = new Scanner(this.configFile)) {
             while (configScanner.hasNextLine()) {
                 String rawConfig = configScanner.nextLine();
                 if (rawConfig.contains(deviceId) && rawConfig.startsWith("routing")) {
-                    for(int i = 0; i <= 3; i++) {
+                    for (int i = 0; i <= 3; i++) {
                         String routingTableEntry = configScanner.nextLine();
                         routingTable.add(routingTableEntry);
                     }
@@ -184,7 +217,6 @@ public class Parser {
         }
         return null;
     }
-
 
     public static void main(String[] args) {
 
@@ -212,14 +244,14 @@ public class Parser {
 
         String virtualIP = testParser.getVirtualIPAddr("A");
 
-        if (virtualIP == null){
+        if (virtualIP == null) {
             System.out.println("Error loading virtual IP");
         } else {
             System.out.printf("Virtual IP: %s\n", virtualIP);
         }
 
         String defaultGateway = testParser.getDefaultGateway("D");
-        if (defaultGateway == null){
+        if (defaultGateway == null) {
             System.out.println("Error loading gateway");
         } else {
             System.out.printf("Host %s's gateway: %s\n", "D", defaultGateway);
@@ -235,7 +267,7 @@ public class Parser {
         }
         List<String> routingTable = testParser.getRoutingTables("R1");
         System.out.println("R1 routing table");
-        for(String entry : routingTable){
+        for (String entry : routingTable) {
             System.out.println(entry);
         }
 
