@@ -11,6 +11,9 @@ public class Packet {
                   String srcIP, String dstIP,
                   String message) {
 
+        if (type != 0 && type != 1)
+            throw new IllegalArgumentException("type cannot be blank, must be 0 or 1");
+
         if (srcMac == null || srcMac.isBlank())
             throw new IllegalArgumentException("srcMac cannot be blank");
 

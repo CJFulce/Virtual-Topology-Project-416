@@ -148,7 +148,7 @@ public class Host {
 
                 }
 
-                Packet packet = new Packet(0, myMac, destMAC, myIP, destIP, message);
+                Packet packet = new Packet( 0, myMac, destMAC, myIP, destIP, message);
                 byte[] data = packet.encode().getBytes(StandardCharsets.UTF_8);
 
                 InetAddress switchIP;
