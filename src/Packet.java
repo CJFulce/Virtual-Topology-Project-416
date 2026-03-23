@@ -1,12 +1,13 @@
 public class Packet {
 
+    private int type; // 0 = hosts, 1 = routers
     private String srcMac;
     private String dstMac;
     private final String srcIP;
     private final String dstIP;
     private final String message;
 
-    public Packet(String srcMac, String dstMac,
+    public Packet(int type, String srcMac, String dstMac,
                   String srcIP, String dstIP,
                   String message) {
 
@@ -22,6 +23,7 @@ public class Packet {
         if (dstIP == null || dstIP.isBlank())
             throw new IllegalArgumentException("dstIP cannot be blank");
 
+        this.type = type;
         this.srcMac = srcMac.trim();
         this.dstMac = dstMac.trim();
         this.srcIP = srcIP.trim();
@@ -30,23 +32,24 @@ public class Packet {
     }
 
     // Format:
-    // SRC_MAC:DST_MAC:SRC_IP:DST_IP:MESSAGE
+    // TYPE:SRC_MAC:DST_MAC:SRC_IP:DST_IP:MESSAGE
     public static Packet decode(String raw) {
         if (raw == null)
             throw new IllegalArgumentException("raw frame is null");
 
-        String[] parts = raw.trim().split(":", 5);
+        String[] parts = raw.trim().split(":", 6);
 
-        if (parts.length < 4)
+        if (parts.length < 5)
             throw new IllegalArgumentException("Bad frame format");
 
+        int type = Integer.parseInt(parts[0]);
         String msg = (parts.length == 5) ? parts[4] : "";
 
-        return new Packet(parts[0], parts[1], parts[2], parts[3], msg);
+        return new Packet(type, parts[1], parts[2], parts[3], parts[4], msg);
     }
 
     public String encode() {
-        return srcMac + ":" + dstMac + ":" + srcIP + ":" + dstIP + ":" + message;
+        return type + ":" + srcMac + ":" + dstMac + ":" + srcIP + ":" + dstIP + ":" + message;
     }
 
     // let routers rewrite MAC
@@ -59,6 +62,7 @@ public class Packet {
     }
 
     // getters
+    public int getType() {return type; }
     public String getSrcMac() { return srcMac; }
     public String getDstMac() { return dstMac; }
     public String getSrcIP() { return srcIP; }

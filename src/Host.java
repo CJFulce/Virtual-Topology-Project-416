@@ -50,7 +50,7 @@ public class Host {
 
         public void run() {
 
-            // make buffer
+            // Make Buffer
             byte[] buffer = new byte[1024];
             DatagramPacket frame = new DatagramPacket(buffer, buffer.length);
 
@@ -68,20 +68,20 @@ public class Host {
 
                 }
 
-                String message = new String(frame.getData(), frame.getOffset(), frame.getLength(),
-                        StandardCharsets.UTF_8);
+                String message = new String(frame.getData(), frame.getOffset(), frame.getLength(), StandardCharsets.UTF_8);
                 Packet packet = Packet.decode(message);
 
-                if (packet.getDstMac().equals(myMac)) {
+                if (packet.getType() == 0 && packet.getDstMac().equals(myMac)) {
+
                     String srcIP = packet.getSrcIP();
                     String srcHost = srcIP.substring(srcIP.indexOf('.') + 1);
                     System.out.println("Message From " + srcHost + ": " + packet.getMessage());
+
                 }
 
                 else {
 
-                    System.out.println("Frame For Other Host. Destination : " + packet.getDstMac() + "Source : "
-                            + packet.getSrcMac());
+                    System.out.println("Frame For Other Host. Destination : " + packet.getDstMac() + "Source : " + packet.getSrcMac());
 
                 }
 
@@ -126,21 +126,33 @@ public class Host {
                 String srcSubnet = myIP.substring(0, myIP.indexOf('.'));
 
                 String destMAC;
+
                 if (destSubnet.equals(srcSubnet)) {
+
                     destMAC = destIP.substring(destIP.indexOf('.') + 1);
-                } else {
-                    String gatewayVirtualIP = parser.getGatewayVirtualIP(myMac);
-                    if (gatewayVirtualIP == null) {
-                        System.out.println("Error: Could not find gateway virtual IP");
-                        continue;
-                    }
-                    destMAC = gatewayVirtualIP.substring(gatewayVirtualIP.indexOf('.') + 1);
+
                 }
 
-                Packet packet = new Packet(myMac, destMAC, myIP, destIP, message);
+                else {
+
+                    String gatewayVirtualIP = parser.getGatewayVirtualIP(myMac);
+
+                    if (gatewayVirtualIP == null) {
+
+                        System.out.println("Error: Could not find gateway virtual IP");
+                        continue;
+
+                    }
+
+                    destMAC = gatewayVirtualIP.substring(gatewayVirtualIP.indexOf('.') + 1);
+
+                }
+
+                Packet packet = new Packet(0, myMac, destMAC, myIP, destIP, message);
                 byte[] data = packet.encode().getBytes(StandardCharsets.UTF_8);
 
                 InetAddress switchIP;
+
                 try {
 
                     switchIP = InetAddress.getByName(parser.getDeviceIP(neighbor));
