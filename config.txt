@@ -1,30 +1,45 @@
-device A net1.A 10.222.2.140 5001 R1L
-device B net1.B 10.222.67.88 5002 R1L
-device C net3.C 10.222.3.187 5003 R2R
-device D net3.D 10.222.49.37 5004 R2R
-device S1 net1.S1 10.222.49.37 6001
-device S2 net3.S3 10.222.3.187 6002
-device R1L net1.R1 10.222.2.140 7000
-device R1R net2.R1 10.222.2.140 7001
-device R2L net2.R2 10.222.67.88 7010
-device R2R net3.R2 10.222.67.88 7011
+device A net1.A 127.0.0.1 5001 R1A
+device B net2.B 127.0.0.1 5002 R3A
+device C net3.C 127.0.0.1 5003 R6A
+
+device S1 net1.S1 127.0.0.1 6001
+device S2 net2.S2 127.0.0.1 6002
+device S3 net3.S3 127.0.0.1 6003
+
+device R1A net1.R1 127.0.0.1 7000
+device R1B net4.R1 127.0.0.1 7001
+device R1C net5.R1 127.0.0.1 7002
+
+device R2A net4.R2 127.0.0.1 7010
+device R2B net6.R2 127.0.0.1 7011
+device R2C net7.R2 127.0.0.1 7012
+
+device R3A net2.R3 127.0.0.1 7020
+device R3B net5.R3 127.0.0.1 7021
+device R3C net6.R3 127.0.0.1 7022
+device R3D net8.R3 127.0.0.1 7023
+
+device R4A net7.R4 127.0.0.1 7030
+device R4B net9.R4 127.0.0.1 7031
+device R4C net10.R4 127.0.0.1 7032
+
+device R5A net8.R5 127.0.0.1 7040
+device R5B net9.R5 127.0.0.1 7041
+
+device R6A net3.R6 127.0.0.1 7050
+device R6B net10.R6 127.0.0.1 7051
 
 link A S1
-link B S1
-link S1 R1L
-link R1R R2L
-link R2R S2
-link C S2
-link D S2
+link S1 R1A
+link B S2
+link S2 R3A
+link C S3
+link S3 R6A
 
-routing R1 
-net1 R1L
-net2 R1R
-net3 net2.R2
-
-routing R2
-net1 net2.R1
-net2 R2L
-net3 R2R
-
-
+link R1B R2A
+link R1C R3B
+link R2B R3C
+link R2C R4A
+link R3D R5A
+link R4B R5B
+link R4C R6B

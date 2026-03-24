@@ -4,103 +4,60 @@ import java.io.IOException;
 import java.net.*;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.*;
 
 public class Router {
-    private Map<String, String> ipRoutingTable = new HashMap<>();
-    private Map<String, Port> ports = new HashMap<>();
-    private Map<Integer, Port> portByNumber = new HashMap<>();
-    private Map<String, DatagramSocket> sendSockets = new HashMap<>();
-    private Map<String, DatagramSocket> receiveSockets = new HashMap<>();
-    private String routerId;
 
-    public Router(String deviceMAC) throws FileNotFoundException {
-        this.routerId = deviceMAC;
-        parseRoutingTable();
+    private static final int LINK_COST = 1;
+    private static final int INFINITY = 1_000_000;
+
+    private final String routerId;
+    private final Map<String, Port> ports = new HashMap<>();
+    private final Map<Integer, Port> portByNumber = new HashMap<>();
+    private final Map<String, DatagramSocket> sendSockets = new HashMap<>();
+    private final Map<String, DatagramSocket> receiveSockets = new HashMap<>();
+
+    private final Map<String, Integer> dist = new ConcurrentHashMap<>();
+    private final Map<String, String> tieVia = new ConcurrentHashMap<>();
+    private final Map<String, Port> forwardPort = new ConcurrentHashMap<>();
+    private final Set<String> directSubnets = ConcurrentHashMap.newKeySet();
+    private final Set<Port> routerNeighborPorts = new HashSet<>();
+
+    public Router(String logicalRouterId) throws FileNotFoundException {
+        this.routerId = logicalRouterId;
         initializePorts();
-    }
-
-    private void parseRoutingTable() throws FileNotFoundException {
-        Scanner s = new Scanner(new File("config.txt"));
-        boolean inSection = false;
-        while (s.hasNextLine()) {
-            String line = s.nextLine().trim();
-            if (line.startsWith("routing " + routerId)) {
-                inSection = true;
-                continue;
-            }
-            if (inSection) {
-                if (line.isEmpty() || line.startsWith("routing"))
-                    break;
-                String[] p = line.split("\\s+");
-                if (p.length >= 2) {
-                    String subnet = p[0];
-                    if (p.length == 2) {
-                        String secondToken = p[1];
-                        if (secondToken.matches("R\\d+[LR]")) {
-                            ipRoutingTable.put(subnet, secondToken);
-                        } else if (secondToken.matches("R\\d+")) {
-                            String nextHopRouter = secondToken;
-                            String nextHopVirtualIP = findNextHopVirtualIPForSubnet(nextHopRouter, subnet);
-                            if (nextHopVirtualIP != null) {
-                                ipRoutingTable.put(subnet, nextHopVirtualIP);
-                            }
-                        } else {
-                            ipRoutingTable.put(subnet, secondToken);
-                        }
-                    } else if (p.length >= 3) {
-                        String nextHopRouter = p[1];
-                        String nextHopPort = p[2];
-                        String deviceId = nextHopRouter + nextHopPort.substring(nextHopRouter.length());
-                        Scanner s2 = new Scanner(new File("config.txt"));
-                        while (s2.hasNextLine()) {
-                            String l = s2.nextLine().trim();
-                            if (l.startsWith("device " + deviceId)) {
-                                String[] parts = l.split("\\s+");
-                                if (parts.length >= 3) {
-                                    ipRoutingTable.put(subnet, parts[2]);
-                                    break;
-                                }
-                            }
-                        }
-                        s2.close();
-                    }
-                }
+        seedDirectRoutes();
+        for (Port p : ports.values()) {
+            if (isRouterInterface(p.neighborId)) {
+                routerNeighborPorts.add(p);
             }
         }
-        s.close();
     }
 
-    private String findNextHopVirtualIPForSubnet(String routerId, String subnet) throws FileNotFoundException {
-        Scanner scanner = new Scanner(new File("config.txt"));
-        while (scanner.hasNextLine()) {
-            String line = scanner.nextLine().trim();
-            if (line.startsWith("device " + routerId)) {
-                String[] parts = line.split("\\s+");
-                if (parts.length >= 3) {
-                    String virtualIP = parts[2];
-                    String portSubnet = virtualIP.substring(0, virtualIP.indexOf('.'));
-                    if (portSubnet.equals(subnet)) {
-                        scanner.close();
-                        return virtualIP;
-                    }
-                }
-            }
+    private static boolean isRouterInterface(String deviceId) {
+        return deviceId != null && deviceId.matches("^R\\d+[A-Z]+$");
+    }
+
+    static String logicalRouterIdFromInterface(String iface) {
+        if (!isRouterInterface(iface)) {
+            return null;
         }
-        scanner.close();
-        return null;
+        return iface.replaceAll("[A-Z]+$", "");
     }
 
-    private void initializePorts() {
-        try {
-            Scanner s = new Scanner(new File("config.txt"));
+    private void initializePorts() throws FileNotFoundException {
+        try (Scanner s = new Scanner(new File("config.txt"))) {
             while (s.hasNextLine()) {
                 String line = s.nextLine().trim();
+                if (line.isEmpty() || line.startsWith("#")) {
+                    continue;
+                }
                 if (line.startsWith("device " + routerId)) {
                     String[] p = line.split("\\s+");
                     if (p.length >= 5) {
-                        String deviceId = p[1], virtualIP = p[2], portName = deviceId.substring(routerId.length());
+                        String deviceId = p[1];
+                        String virtualIP = p[2];
+                        String portName = deviceId.substring(routerId.length());
                         List<Parser.NeighborAddr> n = Parser.getNeighborAddrs(deviceId);
                         if (!n.isEmpty()) {
                             Parser.NeighborAddr neighbor = n.get(0);
@@ -112,9 +69,16 @@ public class Router {
                     }
                 }
             }
-            s.close();
-        } catch (FileNotFoundException e) {
-            e.printStackTrace();
+        }
+    }
+
+    private void seedDirectRoutes() {
+        for (Port p : ports.values()) {
+            String sub = subnet(p.virtualIP);
+            directSubnets.add(sub);
+            dist.put(sub, 0);
+            tieVia.put(sub, routerId);
+            forwardPort.put(sub, p);
         }
     }
 
@@ -137,11 +101,113 @@ public class Router {
         return ip != null && ip.contains(".") ? ip.split("\\.")[1] : null;
     }
 
-    public void handleIncomingPacket(Packet packet, Port sourcePort) throws IOException {
-        if (sourcePort == null)
-            return;
+    private String serializeVector() {
+        List<String> nets = new ArrayList<>(dist.keySet());
+        Collections.sort(nets);
+        StringBuilder sb = new StringBuilder();
+        sb.append(routerId).append('|');
+        for (int i = 0; i < nets.size(); i++) {
+            if (i > 0) {
+                sb.append(',');
+            }
+            sb.append(nets.get(i)).append('=').append(dist.get(nets.get(i)));
+        }
+        return sb.toString();
+    }
 
-        String destIP = packet.getDstIP(), destSubnet = subnet(destIP);
+    private static Map<String, Integer> parseAdvertisedCosts(String body) {
+        Map<String, Integer> m = new HashMap<>();
+        if (body == null || body.isBlank()) {
+            return m;
+        }
+        for (String pair : body.split(",")) {
+            pair = pair.trim();
+            if (pair.isEmpty()) {
+                continue;
+            }
+            String[] kv = pair.split("=", 2);
+            if (kv.length == 2) {
+                m.put(kv[0].trim(), Integer.parseInt(kv[1].trim()));
+            }
+        }
+        return m;
+    }
+
+    private synchronized boolean integrateAdvertisement(String senderLogicalId, Map<String, Integer> adv,
+            Port ingress) {
+        if (senderLogicalId == null || senderLogicalId.equals(routerId)) {
+            return false;
+        }
+        boolean changed = false;
+        for (Map.Entry<String, Integer> e : adv.entrySet()) {
+            String net = e.getKey();
+            if (directSubnets.contains(net)) {
+                continue;
+            }
+            int remote = e.getValue();
+            if (remote >= INFINITY / 2) {
+                continue;
+            }
+            int candidate = remote + LINK_COST;
+            int cur = dist.getOrDefault(net, INFINITY);
+            String curVia = tieVia.get(net);
+            boolean better = candidate < cur;
+            boolean tieWin = candidate == cur && curVia != null && senderLogicalId.compareTo(curVia) < 0;
+            if (better || tieWin) {
+                dist.put(net, candidate);
+                tieVia.put(net, senderLogicalId);
+                forwardPort.put(net, ingress);
+                changed = true;
+            }
+        }
+        return changed;
+    }
+
+    private void sendDistanceVectors() {
+        String payload = serializeVector();
+        for (Port p : routerNeighborPorts) {
+            String neighborVip = Parser.getVirtualIPStatic(p.neighborId);
+            if (neighborVip == null) {
+                continue;
+            }
+            String nMac = mac(neighborVip);
+            String sMac = mac(p.virtualIP);
+            if (nMac == null || sMac == null) {
+                continue;
+            }
+            Packet dv = new Packet(1, sMac, nMac, p.virtualIP, neighborVip, payload);
+            byte[] data = dv.encode().getBytes(StandardCharsets.UTF_8);
+            try {
+                DatagramSocket sock = getSendSocket(p.portName);
+                if (sock != null) {
+                    sock.send(new DatagramPacket(data, data.length, InetAddress.getByName(p.ip), p.udpPort));
+                }
+            } catch (IOException e) {
+                System.err.println("[" + routerId + "] DV send error on " + p.portName + ": " + e.getMessage());
+            }
+        }
+    }
+
+    void handleRoutingPacket(Packet packet, Port ingress) {
+        String msg = packet.getMessage();
+        int sep = msg.indexOf('|');
+        if (sep < 0) {
+            return;
+        }
+        String senderLogical = msg.substring(0, sep);
+        String body = msg.substring(sep + 1);
+        Map<String, Integer> adv = parseAdvertisedCosts(body);
+        if (integrateAdvertisement(senderLogical, adv, ingress)) {
+            sendDistanceVectors();
+        }
+    }
+
+    public void handleIncomingPacket(Packet packet, Port sourcePort) throws IOException {
+        if (sourcePort == null) {
+            return;
+        }
+        String destIP = packet.getDstIP();
+        String destSubnet = subnet(destIP);
         String srcSubnet = subnet(packet.getSrcIP());
 
         if (destSubnet != null && destSubnet.equals(srcSubnet)) {
@@ -149,81 +215,41 @@ public class Router {
             return;
         }
 
-        String nextHop = ipRoutingTable.get(destSubnet);
-        if (nextHop == null) {
+        if (packet.getType() != 0) {
+            return;
+        }
+
+        Port out = forwardPort.get(destSubnet);
+        if (out == null) {
             System.out.println("[" + routerId + "] No route. Dropping packet.");
             return;
         }
 
-        Port destPort;
-        boolean isDirectlyConnected = false;
-        String portName = null;
-        if (nextHop.matches("R\\d+[LR]")) {
-            portName = nextHop.substring(routerId.length());
-            if (ports.containsKey(portName)) {
-                destPort = ports.get(portName);
-                isDirectlyConnected = true;
-            } else {
-                System.out.println(
-                        "[" + routerId + "] ERROR: Port name " + portName + " not found for deviceId " + nextHop);
-                return;
-            }
-        } else if (ports.containsKey(nextHop)) {
-            destPort = ports.get(nextHop);
-            isDirectlyConnected = true;
-        } else if (nextHop.contains(".")) {
-            String nextHopRouterId = mac(nextHop);
-            if (nextHopRouterId == null || nextHopRouterId.isEmpty()) {
-                System.out.println("[" + routerId + "] ERROR: Cannot extract router ID from nextHop=" + nextHop);
-                return;
-            }
-            destPort = ports.values().stream()
-                    .filter(p -> p != null && p.neighborId != null && p.neighborId.startsWith(nextHopRouterId))
-                    .findFirst().orElse(null);
-            isDirectlyConnected = false;
-        } else {
-            System.out.println("[" + routerId + "] ERROR: Invalid nextHop format: " + nextHop);
-            return;
-        }
-
-        if (destPort == null) {
-            System.out.println("[" + routerId + "] Cannot find port for nextHop=" + nextHop + ". Dropping packet.");
-            return;
-        }
-
+        boolean onLan = destSubnet.equals(subnet(out.virtualIP));
         String newDstMac;
-        if (isDirectlyConnected) {
+        if (onLan) {
             newDstMac = mac(destIP);
-            if (newDstMac == null || newDstMac.isEmpty()) {
-                System.out.println("[" + routerId + "] ERROR: Cannot extract MAC from destIP=" + destIP);
-                return;
-            }
         } else {
-            newDstMac = mac(nextHop);
-            if (newDstMac == null || newDstMac.isEmpty()) {
-                System.out.println("[" + routerId + "] ERROR: Cannot extract MAC from nextHop=" + nextHop);
-                return;
-            }
+            String nhVip = Parser.getVirtualIPStatic(out.neighborId);
+            newDstMac = mac(nhVip);
         }
-        String newSrcMac = mac(destPort.virtualIP);
+        if (newDstMac == null || newDstMac.isEmpty()) {
+            System.out.println("[" + routerId + "] ERROR: cannot resolve next-hop MAC for " + destSubnet);
+            return;
+        }
+        String newSrcMac = mac(out.virtualIP);
         if (newSrcMac == null || newSrcMac.isEmpty()) {
-            System.out
-                    .println("[" + routerId + "] ERROR: Cannot extract MAC from port virtualIP=" + destPort.virtualIP);
+            System.out.println("[" + routerId + "] ERROR: bad source MAC on port " + out.portName);
             return;
         }
-        Packet fwd = new Packet(newSrcMac, newDstMac, packet.getSrcIP(), destIP, packet.getMessage());
-
+        Packet fwd = new Packet(0, newSrcMac, newDstMac, packet.getSrcIP(), destIP, packet.getMessage());
         byte[] data = fwd.encode().getBytes(StandardCharsets.UTF_8);
-
-        DatagramSocket sendSocket = getSendSocket(destPort.portName);
+        DatagramSocket sendSocket = getSendSocket(out.portName);
         if (sendSocket == null) {
-            System.out.println("[" + routerId + "] ERROR: Cannot create send socket for port " + destPort.portName);
+            System.out.println("[" + routerId + "] ERROR: no send socket for " + out.portName);
             return;
         }
-
-        sendSocket.send(new DatagramPacket(data, data.length,
-                InetAddress.getByName(destPort.ip), destPort.udpPort));
-
+        sendSocket.send(new DatagramPacket(data, data.length, InetAddress.getByName(out.ip), out.udpPort));
         printFrame("TX", fwd);
     }
 
@@ -233,7 +259,7 @@ public class Router {
         }
 
         String deviceId = routerId + portName;
-        int sourcePort = Parser.getPort(deviceId);
+        int sourcePortNum = Parser.getPort(deviceId);
 
         if (receiveSockets.containsKey(portName)) {
             DatagramSocket recvSocket = receiveSockets.get(portName);
@@ -242,17 +268,22 @@ public class Router {
         }
 
         try {
-            DatagramSocket sock = new DatagramSocket(sourcePort);
+            DatagramSocket sock = new DatagramSocket(sourcePortNum);
             sendSockets.put(portName, sock);
             return sock;
         } catch (Exception e) {
-            System.err.println("[" + routerId + "] ERROR creating socket for " + portName + " on port " + sourcePort
+            System.err.println("[" + routerId + "] ERROR creating socket for " + portName + " on port " + sourcePortNum
                     + ": " + e.getMessage());
             return null;
         }
     }
 
     public static void main(String[] args) throws Exception {
+        if (args.length < 1) {
+            System.err.println("Usage: java Router <R1|R2|…>");
+            return;
+        }
+
         Router r = new Router(args[0]);
         ExecutorService es = Executors.newCachedThreadPool();
         for (Map.Entry<String, Port> entry : r.ports.entrySet()) {
@@ -263,7 +294,6 @@ public class Router {
             try {
                 DatagramSocket recvSocket = new DatagramSocket(portNumber);
                 r.receiveSockets.put(portName, recvSocket);
-
                 es.submit(new ReceiveTask(r, portName, portNumber, recvSocket));
             } catch (Exception e) {
                 System.err.println(
@@ -271,8 +301,18 @@ public class Router {
             }
         }
 
-        System.out.println("[" + args[0] + "] Router up. Table: " + r.ipRoutingTable);
-        System.out.println("[" + args[0] + "] Listening on ports: " + r.receiveSockets.keySet());
+        ScheduledExecutorService sched = Executors.newSingleThreadScheduledExecutor();
+        sched.scheduleAtFixedRate(() -> {
+            try {
+                r.sendDistanceVectors();
+            } catch (Exception e) {
+                System.err.println("[" + r.routerId + "] periodic DV: " + e.getMessage());
+            }
+        }, 50, 400, TimeUnit.MILLISECONDS);
+
+        System.out.println("[" + args[0] + "] Router up (DV). Ports: " + r.receiveSockets.keySet());
+        System.out.println("[" + args[0] + "] Router peers: " + r.routerNeighborPorts.stream()
+                .map(p -> p.neighborId).toList());
 
         Thread.sleep(Long.MAX_VALUE);
     }
@@ -292,7 +332,7 @@ public class Router {
 
         @Override
         public void run() {
-            byte[] buf = new byte[2048];
+            byte[] buf = new byte[8192];
             DatagramPacket dp = new DatagramPacket(buf, buf.length);
 
             while (true) {
@@ -302,21 +342,27 @@ public class Router {
                             new String(dp.getData(), dp.getOffset(), dp.getLength(), StandardCharsets.UTF_8).trim());
 
                     Port inPort = router.portByNumber.get(portNumber);
-
                     if (inPort == null) {
-                        System.out.println("[" + router.routerId + "] WARNING: Cannot identify incoming port for port "
-                                + portNumber);
+                        System.out.println("[" + router.routerId + "] WARNING: unknown ingress UDP " + portNumber);
+                        continue;
+                    }
+
+                    boolean isForMe = router.ports.values().stream()
+                            .anyMatch(
+                                    p -> router.mac(p.virtualIP) != null
+                                            && pkt.getDstMac().equals(router.mac(p.virtualIP)));
+
+                    if (pkt.getType() == 1) {
+                        if (isForMe) {
+                            router.handleRoutingPacket(pkt, inPort);
+                        }
                         continue;
                     }
 
                     router.printFrame("RX", pkt);
-
-                    boolean isForMe = router.ports.values().stream()
-                            .anyMatch(p -> router.mac(p.virtualIP) != null
-                                    && pkt.getDstMac().equals(router.mac(p.virtualIP)));
-
-                    if (isForMe)
+                    if (isForMe) {
                         router.handleIncomingPacket(pkt, inPort);
+                    }
                 } catch (Exception e) {
                     System.err.println(
                             "[" + router.routerId + "] ERROR receiving on port " + portName + ": " + e.getMessage());

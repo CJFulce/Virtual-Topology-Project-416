@@ -39,6 +39,26 @@ public class Parser {
         return result;
     }
 
+    public static String getVirtualIPStatic(String deviceId) {
+        try (Scanner configScanner = new Scanner(new File("config.txt"))) {
+            while (configScanner.hasNextLine()) {
+                String rawConfig = configScanner.nextLine().trim();
+                if (rawConfig.isEmpty() || rawConfig.startsWith("#")) {
+                    continue;
+                }
+                if (rawConfig.startsWith("device")) {
+                    String[] lineElements = rawConfig.split("\\s+");
+                    if (lineElements.length >= 3 && lineElements[1].equals(deviceId)) {
+                        return lineElements[2];
+                    }
+                }
+            }
+        } catch (FileNotFoundException e) {
+            return null;
+        }
+        return null;
+    }
+
     public static class NeighborAddr {
         public final String id;
         public final String ip;
@@ -144,9 +164,12 @@ public class Parser {
         List<String> neighbors = new ArrayList<>();
         try (Scanner configScanner = new Scanner(this.configFile)) {
             while (configScanner.hasNextLine()) {
-                String rawConfig = configScanner.nextLine();
+                String rawConfig = configScanner.nextLine().trim();
+                if (rawConfig.isEmpty() || rawConfig.startsWith("#")) {
+                    continue;
+                }
                 if (rawConfig.startsWith("link")) {
-                    String[] lineElements = rawConfig.split(" ");
+                    String[] lineElements = rawConfig.split("\\s+");
                     // use equals to compare strings
                     if (lineElements[1].equals(deviceId)) {
                         // add the neighbor id or ip (adjust index per your file format)
@@ -267,8 +290,12 @@ public class Parser {
         }
         List<String> routingTable = testParser.getRoutingTables("R1");
         System.out.println("R1 routing table");
-        for (String entry : routingTable) {
-            System.out.println(entry);
+        if (routingTable == null) {
+            System.out.println("(none — use dynamic routing in Project 3)");
+        } else {
+            for (String entry : routingTable) {
+                System.out.println(entry);
+            }
         }
 
     }

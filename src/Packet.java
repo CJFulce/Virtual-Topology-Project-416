@@ -8,8 +8,8 @@ public class Packet {
     private final String message;
 
     public Packet(int type, String srcMac, String dstMac,
-                  String srcIP, String dstIP,
-                  String message) {
+            String srcIP, String dstIP,
+            String message) {
 
         if (type != 0 && type != 1)
             throw new IllegalArgumentException("type cannot be blank, must be 0 or 1");
@@ -46,9 +46,10 @@ public class Packet {
             throw new IllegalArgumentException("Bad frame format");
 
         int type = Integer.parseInt(parts[0]);
-        String msg = (parts.length == 5) ? parts[4] : "";
+        String dstIP = parts[4];
+        String msg = (parts.length >= 6) ? (parts[5] == null ? "" : parts[5]) : "";
 
-        return new Packet(type, parts[1], parts[2], parts[3], parts[4], msg);
+        return new Packet(type, parts[1], parts[2], parts[3], dstIP, msg);
     }
 
     public String encode() {
@@ -65,10 +66,27 @@ public class Packet {
     }
 
     // getters
-    public int getType() {return type; }
-    public String getSrcMac() { return srcMac; }
-    public String getDstMac() { return dstMac; }
-    public String getSrcIP() { return srcIP; }
-    public String getDstIP() { return dstIP; }
-    public String getMessage() { return message; }
+    public int getType() {
+        return type;
+    }
+
+    public String getSrcMac() {
+        return srcMac;
+    }
+
+    public String getDstMac() {
+        return dstMac;
+    }
+
+    public String getSrcIP() {
+        return srcIP;
+    }
+
+    public String getDstIP() {
+        return dstIP;
+    }
+
+    public String getMessage() {
+        return message;
+    }
 }
